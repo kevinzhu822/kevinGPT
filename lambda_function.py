@@ -1,0 +1,146 @@
+import boto3
+import json
+import time
+import re
+from datetime import datetime
+
+ec2 = boto3.client('ec2', region_name='us-east-1')
+ssm = boto3.client('ssm', region_name='us-east-1')
+allowed_origins = [
+        "http://admin.kevin-zhu.com.s3-website-us-east-1.amazonaws.com",
+        "https://d2j6rfgh7rul9g.cloudfront.net",
+        "https://admin.kevin-zhu.com"
+    ]
+cors_headers = {
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, authorization, Content-Type, X-Requested-With",
+        "Access-Control-Allow-Credentials": "true",
+    }
+INSTANCE_ID = 'i-0a7cadc0f412cdcc6'  # Replace with your EC2 instance ID
+LOG_FILE_PATH = '/var/log/syslog'   # Or your app log path
+
+def lambda_handler(event, context):
+    print('HELLO!!!--')
+    print(event)
+    print(context)
+    method = event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "")
+    if method == "OPTIONS":
+        origin = event['headers'].get('origin', 'kevin')
+        if origin in allowed_origins or True:
+            cors_headers["Access-Control-Allow-Origin"] = origin
+
+        return {
+            'statusCode': 204,
+            'headers': cors_headers,
+            'body': ''
+        }
+    op = event.get('queryStringParameters', {}).get('op', 'status')
+    try:
+        if op == 'start':
+            state = get_instance_state(INSTANCE_ID)
+            if state == 'running':
+                return respond(409, {"message": "Invalid Request: Instance is already running"})
+
+            ec2.start_instances(InstanceIds=[INSTANCE_ID])
+            return respond(200, {'message': 'Instance starting up'})
+
+        elif op == 'stop':
+            state = get_instance_state(INSTANCE_ID)
+            if state == 'stopped':
+                return respond(409, {"message": "Invalid Request: Instance is already stopped"})
+            ec2.stop_instances(InstanceIds=[INSTANCE_ID])
+            return respond(200, {'message': 'Stop request sent'})
+
+        elif op == 'status':
+            # Basic instance info
+            instance_info = ec2.describe_instances(InstanceIds=[INSTANCE_ID])
+            instance = instance_info['Reservations'][0]['Instances'][0]
+
+            state = instance['State']['Name']
+            transition_reason_raw = instance.get('StateTransitionReason', '')
+            
+            # Parse timestamp and reason
+            match = re.search(r'\((.*?) GMT\)', transition_reason_raw)
+            if match:
+                last_changed_dt = datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S")
+                last_changed = last_changed_dt.isoformat()
+            else:
+                last_changed = None
+
+            # Detect a simple reason label
+            if "User initiated" in transition_reason_raw:
+                last_changed_reason = "user"
+            elif "Client" in transition_reason_raw:
+                last_changed_reason = "client"
+            elif "Server" in transition_reason_raw:
+                last_changed_reason = "server"
+            elif transition_reason_raw == "":
+                last_changed_reason = "none"
+            else:
+                last_changed_reason = "unknown"
+
+            # Optional: deeper instance health info
+            status_resp = ec2.describe_instance_status(
+                InstanceIds=[INSTANCE_ID],
+                IncludeAllInstances=True
+            )
+
+            if status_resp['InstanceStatuses']:
+                system_status = status_resp['InstanceStatuses'][0]['SystemStatus']['Status']
+                instance_status = status_resp['InstanceStatuses'][0]['InstanceStatus']['Status']
+            else:
+                system_status = instance_status = 'unknown'
+
+            return respond(200, {
+                'state': state,
+                'lastChangedTime': last_changed,
+                'lastChangedReason': last_changed_reason,
+                'systemStatus': system_status,
+                'instanceStatus': instance_status
+            })
+
+        elif op == 'logs':
+            command = f'tail -n 50 {LOG_FILE_PATH}'
+            ssm_resp = ssm.send_command(
+                InstanceIds=[INSTANCE_ID],
+                DocumentName="AWS-RunShellScript",
+                Parameters={'commands': [command]},
+            )
+            command_id = ssm_resp['Command']['CommandId']
+
+            # Wait briefly before fetching result
+            time.sleep(2)
+
+            output = ssm.get_command_invocation(
+                CommandId=command_id,
+                InstanceId=INSTANCE_ID,
+            )
+
+            return respond(200, {
+                'output': output['StandardOutputContent'] or output['StandardErrorContent']
+            })
+
+        else:
+            return respond(400, {'error': f'Unknown operation: {op}'})
+
+    except Exception as e:
+        return respond(500, {'error': str(e)})
+
+
+def respond(status_code, body):
+    print("body:")
+    print(body)
+    print('--GOODBYE!!!')
+    return {
+        'statusCode': status_code,
+        'headers': {
+            **cors_headers,
+            'Content-Type': 'application/json'
+        },
+        'body': json.dumps(body)
+    }
+
+def get_instance_state(instance_id):
+    response = ec2.describe_instances(InstanceIds=[instance_id])
+    state = response['Reservations'][0]['Instances'][0]['State']['Name']
+    return state
