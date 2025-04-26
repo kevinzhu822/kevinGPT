@@ -62,10 +62,10 @@
 
   <!-- Toast Notification -->
   <div id="toast" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 hidden">
-    <div id="toastBox" class="relative bg-white w-80 p-6 rounded-lg shadow-2xl text-center transform scale-90 opacity-0 transition-all duration-500">
+    <div id="toastBox" class="relative bg-white w-96 p-6 rounded-lg shadow-2xl text-center transform scale-90 opacity-0 transition-all duration-500">
       <button id="closeToast" class="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none">&times;</button>
       <div id="toastIcon" class="text-4xl mb-2"></div>
-      <h2 id="toastMessage" class="text-lg font-bold text-gray-800"></h2>
+      <h2 id="toastMessage" class="text-lg font-medium text-gray-800"></h2>
     </div>
   </div>  
   
@@ -108,7 +108,7 @@
       const toastMessage = document.getElementById("toastMessage");
       const toastIcon = document.getElementById("toastIcon");
 
-      toastMessage.textContent = message;
+      toastMessage.innerHTML = message.replace(/\n/g, "<br>");
 
       // Set icon and colors based on type
       if (type === 'success') {
@@ -133,7 +133,7 @@
       });
 
       clearTimeout(toastBox.autoHide);
-      toastBox.autoHide = setTimeout(hideToast, 3000);
+      toastBox.autoHide = setTimeout(hideToastSlow, 3000);
     }
 
     function hideToast() {
@@ -145,6 +145,17 @@
       setTimeout(() => {
         toast.classList.add("hidden");
       }, 100);
+    }
+
+    function hideToastSlow() {
+      const toast = document.getElementById("toast");
+      const toastBox = document.getElementById("toastBox");
+
+      toastBox.classList.remove("opacity-100", "scale-100");
+      toastBox.classList.add("opacity-0", "scale-90");
+      setTimeout(() => {
+        toast.classList.add("hidden");
+      }, 300);
     }
 
     document.addEventListener("DOMContentLoaded", function () {
@@ -254,7 +265,7 @@
 
         if (res.status === 409) {
           const errorData = await res.json();
-          showToast("The EC2 instance is already running. No further action is needed.", "warning");
+          showToast("The EC2 instance is already running", "warning");
           return;
         }
 
@@ -262,12 +273,12 @@
           throw new Error(`Unable to start the EC2 instance: ${res.statusText}`);
         }
 
-        showToast("The EC2 instance is starting. This may take a few moments.", "success");
+        showToast("The EC2 instance is starting.\nThis may take a few moments", "success");
         getEC2State();
         simulateStartupTimer();
       } catch (err) {
         console.error("Error while starting the EC2 instance:", err);
-        showToast("An error occurred while trying to start the EC2 instance. Please try again.", "error");
+        showToast("An error occurred while trying to start the EC2 instance.\nPlease try again.", "error");
       }
     }
 
@@ -281,7 +292,7 @@
 
         if (res.status === 409) {
           const errorData = await res.json();
-          showToast("The EC2 instance is already stopped. No further action is needed.", "warning");
+          showToast("The EC2 instance is already stopped", "warning");
           return;
         }
 
@@ -289,11 +300,11 @@
           throw new Error(`Unable to stop the EC2 instance: ${res.statusText}`);
         }
 
-        showToast("The EC2 instance is stopping. This may take a few moments.", "success");
+        showToast("The EC2 instance is stopping.\nThis may take a few moments.", "success");
         simulateStoppingTimer(); // Start the stopping progress bar
       } catch (err) {
         console.error("Error while stopping the EC2 instance:", err);
-        showToast("An error occurred while trying to stop the EC2 instance. Please try again.", "error");
+        showToast("An error occurred while trying to stop the EC2 instance.\nPlease try again.", "error");
       }
     }
 
@@ -306,7 +317,7 @@
         console.log("Log Response Status:", res.status);
         if (res.status === 409) {
           console.log("showing toast")
-          showToast("The EC2 instance is off. Please start it to fetch logs.", "error");
+          showToast("The EC2 instance is off.\nPlease start it to fetch logs.", "error");
           return;
         }
 
@@ -349,6 +360,7 @@
 
             if (json.state && json.state.toLowerCase() === "running") {
               // Transition to KevinGPT Startup phase
+              getEC2State();
               phase = "kevingpt";
               bar.style.width = "50%"; // Halfway for EC2 startup complete
               bar.style.background = "#fbbf24"; // Yellow for KevinGPT startup
@@ -363,6 +375,7 @@
 
             if (data.status && data.status.toLowerCase() === "healthy") {
               // Transition to Complete phase
+              getStatus();
               bar.style.width = "100%"; // Full width for complete
               bar.style.background = "#16a34a"; // Green for success
               stateTimer.textContent = "KevinGPT is online and ready!";
