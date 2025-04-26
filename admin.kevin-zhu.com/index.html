@@ -37,8 +37,8 @@
       <div id="ec2State" class="font-medium">Loading...</div>
       <div id="stateTimer" class="text-sm mt-2 text-gray-600"></div>
       <div id="lastChecked" class="text-xs text-gray-500 mt-1"></div>
-      <div id="progressWrapper" class="w-full bg-gray-200 rounded-full h-3 mt-3 hidden">
-        <div id="progressBar" class="bg-yellow-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+      <div id="progressWrapper" class="w-full bg-gray-200 rounded-full h-3 mt-3 hidden border border-gray-300 relative">
+        <div id="progressBar" class="absolute top-0 left-0 bg-red-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
       </div>
     </div>
 
@@ -171,7 +171,7 @@
         console.log("KevinGPT status response:", res);
         const appStatusElement = document.getElementById("appStatus");
         const lastCheckedElement = document.getElementById("appLastChecked");
-        if (res.status == 400) {
+        if (res.status == 200) {
           appStatusElement.innerHTML = "KevinGPT is <span class='text-green-600'>online!</span> Visit it here: <a href='https://chat.kevin-zhu.com' class='text-blue-600 underline' target='_blank'>KevinGPT</a>";
         } else {
           appStatusElement.innerHTML = "KevinGPT is <span class='text-red-600'>offline</span> 😔";
@@ -210,10 +210,10 @@
             ec2StateElement.innerHTML = "EC2 instance is <span class='text-red-600'>stopped</span>";
             break;
           case "pending":
-            ec2StateElement.innerHTML = "EC2 instance is <span class='text-yellow-500'>starting up</span>. Please wait...";
+            ec2StateElement.innerHTML = "EC2 instance is <span class='text-yellow-500'>starting up</span>";
             break;
           case "stopping":
-            ec2StateElement.innerHTML = "EC2 instance is <span class='text-yellow-500'>shutting down</span>. Please wait...";
+            ec2StateElement.innerHTML = "EC2 instance is <span class='text-yellow-500'>shutting down</span>";
             break;
           default:
             ec2StateElement.innerHTML = "EC2 instance state is <span class='text-gray-600'>unknown</span>";
@@ -239,7 +239,7 @@
           }
         }
 
-        document.getElementById("lastChecked").textContent = `Last checked at ${new Date().toLocaleTimeString()}.`;
+        document.getElementById("lastChecked").textContent = `Last checked at ${new Date().toLocaleTimeString()}`;
       } catch (err) {
         console.error("Error while checking the EC2 instance state:", err);
         const ec2StateElement = document.getElementById("ec2State");
@@ -364,7 +364,7 @@
               phase = "kevingpt";
               bar.style.width = "50%"; // Halfway for EC2 startup complete
               bar.style.background = "#fbbf24"; // Yellow for KevinGPT startup
-              stateTimer.textContent = "EC2 instance is running. Starting KevinGPT...";
+              stateTimer.textContent = "Starting KevinGPT...";
               seconds = 0; // Reset seconds for the next phase
             }
           } else if (phase === "kevingpt") {
@@ -421,6 +421,7 @@
 
           if (json.state && json.state.toLowerCase() === "stopped") {
             // Transition to "Stopped" phase
+            getEC2State();
             bar.style.width = "100%"; // Full width for complete
             bar.style.background = "#16a34a"; // Green for success
             stateTimer.textContent = "EC2 instance has been stopped. Thanks for helping us save money!";
