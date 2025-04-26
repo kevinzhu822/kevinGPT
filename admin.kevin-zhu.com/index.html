@@ -7,36 +7,6 @@
   <title>KevinGPT Admin Panel</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js" defer></script>
-  <style>
-    /* Toast styling */
-    #toast {
-      visibility: hidden;
-      min-width: 250px;
-      margin-left: -125px;
-      background-color: #333;
-      color: #fff;
-      text-align: center;
-      border-radius: 5px;
-      padding: 16px;
-      position: fixed;
-      z-index: 1;
-      left: 50%;
-      bottom: 30px;
-      font-size: 17px;
-    }
-    #toast.show {
-      visibility: visible;
-      animation: fadein 0.5s, fadeout 0.5s 2.5s;
-    }
-    @keyframes fadein {
-      from {bottom: 0; opacity: 0;}
-      to {bottom: 30px; opacity: 1;}
-    }
-    @keyframes fadeout {
-      from {bottom: 30px; opacity: 1;}
-      to {bottom: 0; opacity: 0;}
-    }
-  </style>
 </head>
 <body class="bg-gray-100 font-sans text-gray-800">
   <div class="max-w-2xl mx-auto mt-10 p-6" x-data="{
@@ -91,9 +61,14 @@
   </div>
 
   <!-- Toast Notification -->
-  <div id="toast" class="fixed bottom-5 right-5 bg-gray-800 text-white px-4 py-3 rounded shadow-lg hidden transition-all duration-500 transform opacity-0 translate-y-5">
-    <span id="toastMessage"></span>
-  </div>
+  <div id="toast" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 hidden">
+    <div id="toastBox" class="relative bg-white w-80 p-6 rounded-lg shadow-2xl text-center transform scale-90 opacity-0 transition-all duration-500">
+      <button id="closeToast" class="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none">&times;</button>
+      <div id="toastIcon" class="text-4xl mb-2"></div>
+      <h2 id="toastMessage" class="text-lg font-bold text-gray-800"></h2>
+    </div>
+  </div>  
+  
 
   <script>
     const COGNITO_DOMAIN = "login.kevin-zhu.com";
@@ -127,19 +102,55 @@
     }
 
     // Show toast notification
-    function showToast(message) {
+    function showToast(message, type = 'success') {
       const toast = document.getElementById("toast");
+      const toastBox = document.getElementById("toastBox");
       const toastMessage = document.getElementById("toastMessage");
-      toastMessage.textContent = message;
-      
-      toast.classList.remove("hidden", "opacity-0", "translate-y-5");
-      toast.classList.add("opacity-100", "translate-y-0");
+      const toastIcon = document.getElementById("toastIcon");
 
-      setTimeout(() => {
-        toast.classList.add("opacity-0", "translate-y-5");
-        setTimeout(() => toast.classList.add("hidden"), 500);
-      }, 3000);
+      toastMessage.textContent = message;
+
+      // Set icon and colors based on type
+      if (type === 'success') {
+        toastIcon.textContent = '✅';
+        toastBox.classList.remove('border-red-500', 'border-yellow-500');
+        toastBox.classList.add('border-green-500');
+      } else if (type === 'warning') {
+        toastIcon.textContent = '⚠️';
+        toastBox.classList.remove('border-red-500', 'border-green-500');
+        toastBox.classList.add('border-yellow-500');
+      } else if (type === 'error') {
+        toastIcon.textContent = '❌';
+        toastBox.classList.remove('border-green-500', 'border-yellow-500');
+        toastBox.classList.add('border-red-500');
+      }
+
+      toast.classList.remove("hidden");
+
+      requestAnimationFrame(() => {
+        toastBox.classList.remove("opacity-0", "scale-90");
+        toastBox.classList.add("opacity-100", "scale-100");
+      });
+
+      clearTimeout(toastBox.autoHide);
+      toastBox.autoHide = setTimeout(hideToast, 3000);
     }
+
+    function hideToast() {
+      const toast = document.getElementById("toast");
+      const toastBox = document.getElementById("toastBox");
+
+      toastBox.classList.remove("opacity-100", "scale-100");
+      toastBox.classList.add("opacity-0", "scale-90");
+      setTimeout(() => {
+        toast.classList.add("hidden");
+      }, 100);
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      document.getElementById("closeToast").addEventListener("click", hideToast);
+    });
+
 
     async function getStatus() {
       try {
@@ -182,10 +193,10 @@
         // Handle user-friendly statuses
         switch (state) {
           case "running":
-            ec2StateElement.innerHTML = "EC2 instance is <span class='text-green-600'>running</span>.";
+            ec2StateElement.innerHTML = "EC2 instance is <span class='text-green-600'>running</span>";
             break;
           case "stopped":
-            ec2StateElement.innerHTML = "EC2 instance is <span class='text-red-600'>stopped</span>.";
+            ec2StateElement.innerHTML = "EC2 instance is <span class='text-red-600'>stopped</span>";
             break;
           case "pending":
             ec2StateElement.innerHTML = "EC2 instance is <span class='text-yellow-500'>starting up</span>. Please wait...";
@@ -194,7 +205,7 @@
             ec2StateElement.innerHTML = "EC2 instance is <span class='text-yellow-500'>shutting down</span>. Please wait...";
             break;
           default:
-            ec2StateElement.innerHTML = "EC2 instance state is <span class='text-gray-600'>unknown</span>.";
+            ec2StateElement.innerHTML = "EC2 instance state is <span class='text-gray-600'>unknown</span>";
             break;
         }
 
@@ -243,7 +254,7 @@
 
         if (res.status === 409) {
           const errorData = await res.json();
-          showToast("The EC2 instance is already running. No further action is needed.");
+          showToast("The EC2 instance is already running. No further action is needed.", "warning");
           return;
         }
 
@@ -251,12 +262,12 @@
           throw new Error(`Unable to start the EC2 instance: ${res.statusText}`);
         }
 
-        showToast("The EC2 instance is starting. This may take a few moments.");
+        showToast("The EC2 instance is starting. This may take a few moments.", "success");
         getEC2State();
         simulateStartupTimer();
       } catch (err) {
         console.error("Error while starting the EC2 instance:", err);
-        showToast("An error occurred while trying to start the EC2 instance. Please try again.");
+        showToast("An error occurred while trying to start the EC2 instance. Please try again.", "error");
       }
     }
 
@@ -270,7 +281,7 @@
 
         if (res.status === 409) {
           const errorData = await res.json();
-          showToast("The EC2 instance is already stopped. No further action is needed.");
+          showToast("The EC2 instance is already stopped. No further action is needed.", "warning");
           return;
         }
 
@@ -278,11 +289,11 @@
           throw new Error(`Unable to stop the EC2 instance: ${res.statusText}`);
         }
 
-        showToast("The EC2 instance is stopping. This may take a few moments.");
+        showToast("The EC2 instance is stopping. This may take a few moments.", "success");
         simulateStoppingTimer(); // Start the stopping progress bar
       } catch (err) {
         console.error("Error while stopping the EC2 instance:", err);
-        showToast("An error occurred while trying to stop the EC2 instance. Please try again.");
+        showToast("An error occurred while trying to stop the EC2 instance. Please try again.", "error");
       }
     }
 
@@ -292,17 +303,24 @@
         const res = await fetch(API_LOGS, {
           headers: { Authorization: idToken },
         });
+        console.log("Log Response Status:", res.status);
+        if (res.status === 409) {
+          console.log("showing toast")
+          showToast("The EC2 instance is off. Please start it to fetch logs.", "error");
+          return;
+        }
 
         if (!res.ok) {
-          throw new Error("Failed to fetch logs");
+          console.log("response:", res.json());
+          console.log("Error fetching logs:", res.statusText);
         }
 
         const data = await res.json();
         console.log("Logs fetched:", data);
-        showToast(data.output || "No logs available");
+        showToast(data.output || "No logs available", "success");
       } catch (err) {
         console.error("Error while fetching logs:", err);
-        showToast(`Error: ${err.message}`);
+        showToast(`Error: ${err.message}`, "error");
       }
     }
 
