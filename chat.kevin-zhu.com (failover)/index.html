@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="favicon-dark.ico" type="image/x-icon" />
+  <title>KevinGPT Status</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .spinner {
+      border: 4px solid #e5e7eb;
+      border-top: 4px solid #9ca3af;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800">
+  <div class="max-w-xl mx-auto mt-20 p-8 bg-white rounded-2xl shadow-lg text-center">
+    <h1 class="text-3xl font-bold mb-4">KevinGPT Status</h1>
+
+    <p id="statusText" class="text-xl font-medium mb-6">
+      KevinGPT is currently <span class="text-red-600">unavailable</span>
+    </p>
+
+    <div id="spinner" class="mb-6">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 mx-auto text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10h.01M15 10h.01M12 2a10 10 0 100 20 10 10 0 000-20zm-3.5 13a4.5 4.5 0 017 0" />
+      </svg>
+    </div>
+
+    <p class="mb-6 text-gray-700">
+      Check the <a href="https://admin.kevin-zhu.com" class="text-blue-600 underline font-medium">KevinGPT Admin Panel</a> for the current server status.
+    </p>
+
+    <div class="text-left">
+      <h2 class="text-lg font-semibold text-gray-800 mb-4">Notes:</h2>
+      <ul class="space-y-4 list-disc list-outside pl-5 text-gray-600 text-sm">
+        <li>
+          If you just turned on the EC2 server, it may take a minute or two for your browser to realize that KevinGPT is back online.
+        </li>
+        <li>
+          Try opening <a href="https://chat.kevin-zhu.com" target="_blank" class="text-blue-600 underline">chat.kevin-zhu.com</a> in 
+          <span class="font-semibold">incognito mode</span> to bypass DNS caching.
+        </li>
+      </ul>
+    </div>
+
+    <a href="https://admin.kevin-zhu.com" id="adminButton" class="mt-8 inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition">
+      KevinGPT Admin Panel
+    </a>
+  </div>
+
+  <script>
+    async function checkHealth() {
+      try {
+        const response = await fetch('/health', { cache: 'no-store' });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status && data.status.toLowerCase() === "ok") {
+            document.getElementById('statusText').innerHTML = `
+              Current status of <span class="font-mono">chat.kevin-zhu.com</span>:
+              <span class="text-green-600 font-bold">Available!</span>
+            `;
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('adminButton').textContent = 'Entering KevinGPT...';
+            document.getElementById('adminButton').classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            document.getElementById('adminButton').classList.add('bg-green-600', 'hover:bg-green-700');
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 1000);
+            return;
+          }
+        }
+      } catch (e) {
+        console.log('Still checking...');
+      }
+      setTimeout(checkHealth, 5000);
+    }
+
+    checkHealth();
+  </script>
+</body>
+</html>

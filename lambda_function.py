@@ -3,6 +3,7 @@ import json
 import time
 import re
 from datetime import datetime
+from urllib.request import urlopen
 
 ec2 = boto3.client('ec2', region_name='us-east-1')
 ssm = boto3.client('ssm', region_name='us-east-1')
@@ -36,7 +37,18 @@ def lambda_handler(event, context):
         }
     op = event.get('queryStringParameters', {}).get('op', 'status')
     try:
-        if op == 'start':
+        if op == 'health':
+            # Use health check endpoint
+            health_check_url = 'https://chat.kevin-zhu.com/health'
+            try:
+                with urlopen(health_check_url) as response:
+                    if response.status == 200:
+                        return respond(200, {'message': 'Health check passed'})
+                    else:
+                        return respond(500, {'message': 'Health check failed'})
+            except Exception as e:
+                return respond(500, {'error': str(e)})
+        elif op == 'start':
             state = get_instance_state(INSTANCE_ID)
             if state == 'running':
                 return respond(409, {"message": "Invalid Request: Instance is already running"})
@@ -100,7 +112,13 @@ def lambda_handler(event, context):
             })
 
         elif op == 'logs':
-            command = f'tail -n 50 {LOG_FILE_PATH}'
+            # Check if the instance is running
+            state = get_instance_state(INSTANCE_ID)
+            if state != 'running':
+                return respond(409, {"message": "Invalid Request: Instance is not running"})
+
+            # Target the container named 'openwebui'
+            command = "docker ps -qf 'name=openwebui' | xargs -r docker logs --tail 50"
             ssm_resp = ssm.send_command(
                 InstanceIds=[INSTANCE_ID],
                 DocumentName="AWS-RunShellScript",
