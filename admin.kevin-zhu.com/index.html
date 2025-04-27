@@ -18,33 +18,51 @@
     <div class="bg-white p-6 rounded-xl shadow-md mb-6">
       <div class="flex justify-between items-center mb-2">
         <h2 class="text-xl font-semibold" x-text="panel.title"></h2>
-        <button x-show="panel.action" @click="panel.action()" class="text-blue-600 hover:underline text-sm">Refresh</button>
+        <button x-show="panel.actionName" @click="$data[panel.actionName]()" class="text-blue-600 hover:underline text-sm">Refresh</button>
       </div>
       <div :id="panel.id" class="font-medium">Loading...</div>
       <div x-show="panel.subId" :id="panel.subId" class="text-xs text-gray-500 mt-1"></div>
     </div>
   </template>
 
+  <!-- EC2 Controls -->
+  <div class="bg-white p-6 rounded-xl shadow-md mb-6">
+    <div class="flex justify-between items-center mb-2">
+      <h2 class="text-xl font-semibold">EC2 Controls</h2>
+      <span class="text-sm font-medium" :class="isLoggedIn ? 'text-green-600' : 'text-red-600'" x-text="isLoggedIn ? 'Logged In ✓' : 'Login Required'"></span>
+    </div>
+    <template x-if="isLoggedIn">
+      <div class="space-x-2 mb-3">
+        <button @click="startEC2()" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Start</button>
+        <button @click="stopEC2()" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Stop</button>
+        <button @click="fetchLogs()" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">Fetch Logs</button>
+      </div>
+    </template>
+    <template x-if="!isLoggedIn">
+      <button @click="login()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Log In with Cognito</button>
+    </template>
+  </div>
+
   <!-- Cost Breakdown -->
   <div class="bg-white p-6 rounded-xl shadow-md mb-6">
     <div class="flex justify-between items-center mb-2">
-      <h2 class="text-xl font-semibold">Cost Breakdown</h2>
-      <span class="text-sm font-medium" :class="isLoggedIn ? 'text-green-600' : 'text-red-600'" x-text="isLoggedIn ? 'Logged In ✓' : 'Login Required'"></span>
+      <h2 id="costBreakdownHeader" class="text-xl font-semibold">Cost Breakdown</h2>
     </div>
-
     <template x-if="isLoggedIn">
       <div id="costBreakdown" class="space-y-6">
         <template x-for="vendor in vendors" :key="vendor.name">
-          <div class="grid grid-cols-2 gap-4 items-start w-full">
+          <div class="grid grid-cols-2 gap-4 items-start w-full" :id="vendor.wrapperId">
             <span class="font-medium" x-text="vendor.displayName"></span>
-            <div :id="vendor.domId" class="text-gray-600 w-full">Loading...</div>
+            <div class="flex items-center space-x-2 text-gray-600 w-full animate-pulse" :id="vendor.domId">
+              <svg class="h-4 w-4 text-gray-500 animate-spin-slow" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+              </svg>
+              <span>Loading...</span>
+            </div>
           </div>
-        </template>
+        </template>    
       </div>
-    </template>
-
-    <template x-if="!isLoggedIn">
-      <button @click="login()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Log In with Cognito</button>
     </template>
   </div>
 </div>
@@ -58,44 +76,65 @@
   </div>
 </div>
 
+<!-- Log Viewer Modal -->
+<div id="logViewer" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 hidden z-50">
+  <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-3xl p-6 overflow-y-auto max-h-[80vh] relative">
+    <button id="closeLogViewer" class="absolute top-3 right-4 text-2xl text-gray-400 hover:text-gray-700">&times;</button>
+    <h2 class="text-xl font-bold mb-4">EC2 Logs</h2>
+    <pre id="logContent" class="bg-gray-100 p-4 rounded-lg text-sm text-gray-800 whitespace-pre-wrap font-mono"></pre>
+  </div>
+</div>
+
 <script>
+// Smooth spinner custom animation
+document.head.insertAdjacentHTML('beforeend', `<style>
+@keyframes spin-slow { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.animate-spin-slow { animation: spin-slow 1.5s linear infinite; }
+</style>`);
+
 function appData() {
   return {
     isLoggedIn: !!localStorage.getItem('id_token'),
     vendors: [
       { name: 'openai', displayName: 'OpenAI', api: 'openai-cost', domId: 'openaiCostBreakdown' },
       { name: 'aws', displayName: 'AWS', api: 'aws-cost', domId: 'awsCostBreakdown' },
-      { name: 'brave', displayName: 'Brave (Internet Search)', api: 'brave-cost', domId: 'braveCostBreakdown' },
+      // { name: 'brave', displayName: 'Brave (Internet Search)', api: 'brave-cost', domId: 'braveCostBreakdown' }, # FREE
     ],
     panels: [
-      { title: 'App Status', id: 'appStatus', subId: 'appLastChecked', action: getStatus },
-      { title: 'EC2 State', id: 'ec2State', subId: 'lastChecked', action: getEC2State },
+      { title: 'App Status', id: 'appStatus', subId: 'appLastChecked', actionName: 'refreshAppStatus' },
+      { title: 'EC2 State', id: 'ec2State', subId: 'lastChecked', actionName: 'refreshEC2State' },
     ],
     async init() {
+      this.refreshAppStatus();
+      this.refreshEC2State();
       if (this.isLoggedIn) {
-        await this.fetchCosts();
+        requestAnimationFrame(async () => {
+          await this.fetchCosts();
+        });
       }
     },
     async fetchCosts() {
       await Promise.all(this.vendors.map(async (vendor) => {
         const data = await fetchVendorData(vendor.api);
         if (!data) return;
+        if (vendor.name === 'aws') {
+          const rangeText = formatAwsDateRange(data);
+          document.getElementById('costBreakdownHeader').textContent = `Cost Breakdown ${rangeText}`;
+        }
         renderVendorCost(data, vendor.domId, vendor.name);
       }));
     },
-    login() {
-      const domain = "login.kevin-zhu.com";
-      const clientId = "1epb6123uv6n1mq9q5t8sias9u";
-      const redirectUri = window.location.hostname.includes("s3-website")
-        ? `http://${window.location.hostname}`
-        : "https://admin.kevin-zhu.com";
-      window.location.href = `https://${domain}/login?client_id=${clientId}&response_type=token&scope=email+openid&redirect_uri=${redirectUri}`;
-    }
+    refreshAppStatus() {
+      getStatus();
+    },
+    refreshEC2State() {
+      getEC2State();
+    },
+    login,
+    startEC2,
+    stopEC2,
+    fetchLogs,
   }
-}
-
-function truncateToCents(num) {
-  return Math.floor(num * 100) / 100;
 }
 
 const API_BASE_URL = "https://miw5dbkttmuhs4wzs5hvbkoygq0jozll.lambda-url.us-east-2.on.aws";
@@ -123,7 +162,17 @@ async function fetchVendorData(api) {
 
 function renderVendorCost(data, domId, vendorName) {
   const div = document.getElementById(domId);
-  div.innerHTML = '';
+  if (!div) {
+    console.error(`DOM element ${domId} not found!`);
+    return null;
+  }
+  const parent = div.parentElement;
+
+  const contentDiv = document.createElement('div');
+  contentDiv.className = "flex flex-col w-full";
+
+  let startDate = null;
+  let endDate = null;
 
   if (vendorName === 'aws' || vendorName === 'openai') {
     const total = vendorName === 'aws'
@@ -131,7 +180,7 @@ function renderVendorCost(data, domId, vendorName) {
       : data.totalOpenAICost;
 
     const totalDiv = createTotalDiv(total);
-    div.appendChild(totalDiv);
+    contentDiv.appendChild(totalDiv);
 
     const items = vendorName === 'aws'
       ? data.services.map(s => ({ name: s.service, cost: parseFloat(s.cost) }))
@@ -139,10 +188,12 @@ function renderVendorCost(data, domId, vendorName) {
 
     items.filter(i => i.cost >= 0.01)
          .sort((a, b) => b.cost - a.cost)
-         .forEach(item => div.appendChild(createCostItem(item.name, item.cost)));
+         .forEach(item => contentDiv.appendChild(createCostItem(item.name, item.cost)));
+
   } else {
-    div.textContent = 'Vendor cost not implemented.';
+    contentDiv.innerHTML = 'Vendor cost not implemented.';
   }
+  parent.replaceChild(contentDiv, div);
 }
 
 function createTotalDiv(total) {
@@ -165,16 +216,46 @@ function createCostItem(name, cost) {
   return div;
 }
 
+function truncateToCents(num) {
+  return Math.floor(num * 100) / 100;
+}
+
+function formatAwsDateRange(awsData) {
+  if (!awsData || !awsData.start || !awsData.end) {
+    return ''; // No dates to show
+  }
+
+  const startDate = new Date(awsData.start).toLocaleDateString('en-US');
+  const endDate = new Date(awsData.end).toLocaleDateString('en-US');
+  return `(${startDate} - ${endDate})`;
+}
+
+
 async function getStatus() {
-  const url = "https://openwebui.kevin-zhu.com/health";
   try {
-    const res = await fetch(url);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500); // 1.5s timeout
+
+    const res = await fetch("https://openwebui.kevin-zhu.com/health", { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     const appStatus = document.getElementById("appStatus");
     const appLastChecked = document.getElementById("appLastChecked");
-    appStatus.innerHTML = res.ok ? 'KevinGPT is <span class="text-green-600">online!</span>' : 'KevinGPT is <span class="text-red-600">offline</span>';
-    appLastChecked.textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
+
+    if (appStatus && appLastChecked) {
+      appStatus.innerHTML = res.ok
+        ? 'KevinGPT is <span class="text-green-600">online ✅</span>'
+        : 'KevinGPT is <span class="text-red-600">offline ❌</span>';
+      appLastChecked.textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
+    }
   } catch (err) {
     console.error('Health check failed', err);
+    const appStatus = document.getElementById("appStatus");
+    const appLastChecked = document.getElementById("appLastChecked");
+    if (appStatus && appLastChecked) {
+      appStatus.innerHTML = 'KevinGPT is <span class="text-red-600">offline ❌</span>';
+      appLastChecked.textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
+    }
   }
 }
 
@@ -185,13 +266,128 @@ async function getEC2State() {
     const state = data.state?.toLowerCase() || 'unknown';
     const ec2State = document.getElementById("ec2State");
     const lastChecked = document.getElementById("lastChecked");
-    ec2State.textContent = `EC2 is ${state}`;
+
+    if (state === "running") {
+      ec2State.innerHTML = 'EC2 is <span class="text-green-600">running 🏃‍➡️</span>';
+    } else if (state === "stopped") {
+      ec2State.innerHTML = 'EC2 is <span class="text-red-600">stopped ✋</span>';
+    } else {
+      ec2State.innerHTML = `EC2 is ${state}`;
+    }
+
     lastChecked.textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
   } catch (err) {
     console.error('EC2 status check failed', err);
   }
 }
 
+async function startEC2() {
+  await ec2Action('start', 'Starting EC2...');
+}
+async function stopEC2() {
+  await ec2Action('stop', 'Stopping EC2...');
+}
+async function fetchLogs() {
+  try {
+    const res = await fetch(`${API_BASE_URL}?op=logs`, { method: "GET", headers: { Authorization: idToken } });
+    const data = await res.json();
+
+    if (!res.ok || !data.output) {
+      showToast('Failed to fetch logs. EC2 might be off.', 'error');
+      return;
+    }
+
+    // Show logs nicely inside the modal
+    const logViewer = document.getElementById("logViewer");
+    const logContent = document.getElementById("logContent");
+    logContent.textContent = data.output || 'No logs available.';
+    logViewer.classList.remove("hidden");
+    
+  } catch (err) {
+    console.error("Error fetching logs:", err);
+    showToast('Network error fetching logs.', 'error');
+  }
+}
+
+async function ec2Action(action, toastMessage, method = 'POST') {
+  try {
+    const res = await fetch(`${API_BASE_URL}?op=${action}`, { method, headers: { Authorization: idToken } });
+    const rawText = await res.text();
+    
+    if (!res.ok) {
+      console.error(`Server Error Response:`, rawText);
+
+      let friendlyMessage = 'Action failed!';
+      if (rawText.includes('already running')) {
+        friendlyMessage = 'The EC2 is already running 🏃‍♂️';
+      } else if (rawText.includes('already stopped')) {
+        friendlyMessage = 'The EC2 is already stopped ✋';
+      } else if (rawText.includes('Unauthorized')) {
+        friendlyMessage = 'You are not authorized. Please log in again.';
+      } else if (rawText.includes('timeout')) {
+        friendlyMessage = 'The EC2 is taking too long to respond. Please try again later.';
+      } else if (action === 'logs') {
+        friendlyMessage = 'Cannot fetch logs. EC2 might be off.';
+      }
+
+      showToast(friendlyMessage, 'error');
+      return;
+    }
+
+    // ✅ Now success handling
+    if (action === 'start') {
+      showToast('Successfully started EC2! 🏃‍➡️', 'success');
+    } else if (action === 'stop') {
+      showToast('Successfully stopped EC2! ✋', 'success');
+    } else if (action === 'logs') {
+      showToast('Logs fetched successfully 📜', 'success');
+    } else {
+      showToast(`${toastMessage} ✅`, 'success');
+    }
+
+  } catch (err) {
+    console.error(`Error performing EC2 ${action}:`, err);
+    showToast('Network error. Please try again.', 'error');
+  }
+}
+
+// Toast logic
+function showToast(message, type = 'success') {
+  const toast = document.getElementById("toast");
+  const toastBox = document.getElementById("toastBox");
+  const toastMessage = document.getElementById("toastMessage");
+  const toastIcon = document.getElementById("toastIcon");
+
+  toastMessage.innerHTML = message.replace(/\n/g, "<br>");
+  toastIcon.textContent = type === 'success' ? '✅' : type === 'error' ? '❌' : '⚠️';
+
+  toast.classList.remove("hidden");
+  requestAnimationFrame(() => {
+    toastBox.classList.remove("opacity-0", "scale-90");
+    toastBox.classList.add("opacity-100", "scale-100");
+  });
+
+  clearTimeout(toastBox.autoHide);
+  toastBox.autoHide = setTimeout(hideToastSlow, 3000);
+}
+
+function hideToastSlow() {
+  const toast = document.getElementById("toast");
+  const toastBox = document.getElementById("toastBox");
+
+  toastBox.classList.remove("opacity-100", "scale-100");
+  toastBox.classList.add("opacity-0", "scale-90");
+  setTimeout(() => {
+    toast.classList.add("hidden");
+  }, 300);
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  document.getElementById("closeToast").addEventListener("click", hideToastSlow);
+  document.getElementById("closeLogViewer").addEventListener("click", function() {
+    document.getElementById("logViewer").classList.add("hidden");
+  });
+});
 </script>
 
 </body>
