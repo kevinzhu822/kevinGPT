@@ -78,7 +78,7 @@
       : "https://admin.kevin-zhu.com";
 
     const API_BASE_URL = "https://miw5dbkttmuhs4wzs5hvbkoygq0jozll.lambda-url.us-east-2.on.aws";
-    const API_HEALTH_URL = `${API_BASE_URL}/ec2?op=health`;
+    const API_HEALTH_URL = "https://openwebui.kevin-zhu.com/health";
     const API_EC2_STATE = `${API_BASE_URL}/ec2?op=status`;
     const API_START_EC2 = `${API_BASE_URL}/ec2?op=start`;
     const API_STOP_EC2 = `${API_BASE_URL}/ec2?op=stop`;
@@ -164,21 +164,34 @@
 
 
     async function getStatus() {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // ⏰ timeout after 2 seconds
+
       try {
         console.log("Checking KevinGPT status...");
-        const res = await fetch(API_HEALTH_URL);
-  
+        const res = await fetch(API_HEALTH_URL, { 
+          cache: "no-store", 
+          signal: controller.signal 
+        });
+
+        clearTimeout(timeoutId); // 🔥 clear timeout if fetch succeeds
+
         console.log("KevinGPT status response:", res);
+
         const appStatusElement = document.getElementById("appStatus");
         const lastCheckedElement = document.getElementById("appLastChecked");
+
         if (res.status == 200) {
           appStatusElement.innerHTML = "KevinGPT is <span class='text-green-600'>online!</span> Visit it here: <a href='https://chat.kevin-zhu.com' class='text-blue-600 underline' target='_blank'>KevinGPT</a>";
         } else {
           appStatusElement.innerHTML = "KevinGPT is <span class='text-red-600'>offline</span> 😔";
         }
+
         lastCheckedElement.textContent = `Last checked at ${new Date().toLocaleTimeString()}`;
       } catch (err) {
+        clearTimeout(timeoutId); // 🔥 clear timeout if fetch errors
         console.error("Error while checking KevinGPT status:", err);
+
         const appStatusElement = document.getElementById("appStatus");
         appStatusElement.innerHTML = "KevinGPT is <span class='text-red-600'>offline</span> 😔";
         const lastCheckedElement2 = document.getElementById("appLastChecked");
@@ -204,19 +217,19 @@
         // Handle user-friendly statuses
         switch (state) {
           case "running":
-            ec2StateElement.innerHTML = "EC2 is <span class='text-green-600'>running</span>";
+            ec2StateElement.innerHTML = "EC2 server is currently <span class='text-green-600'>running</span> 🏃‍➡️";
             break;
           case "stopped":
-            ec2StateElement.innerHTML = "EC2 is <span class='text-red-600'>stopped</span>";
+            ec2StateElement.innerHTML = "EC2 server is currently <span class='text-red-600'>stopped</span> ✋";
             break;
           case "pending":
-            ec2StateElement.innerHTML = "EC2 is <span class='text-yellow-500'>starting up</span>";
+            ec2StateElement.innerHTML = "EC2 server is currently <span class='text-yellow-500'>starting up</span>";
             break;
           case "stopping":
-            ec2StateElement.innerHTML = "EC2 is <span class='text-yellow-500'>shutting down</span>";
+            ec2StateElement.innerHTML = "EC2 server is currently <span class='text-yellow-500'>shutting down</span>";
             break;
           default:
-            ec2StateElement.innerHTML = "EC2 state is <span class='text-gray-600'>unknown</span>";
+            ec2StateElement.innerHTML = "EC2 state is currently <span class='text-gray-600'>unknown</span>";
             break;
         }
 
@@ -372,6 +385,7 @@
             const res = await fetch(API_HEALTH_URL);
             const data = await res.json();
             console.log("KevinGPT health response:", data);
+            getStatus();
 
             if (data.status && data.status.toLowerCase() === "healthy") {
               // Transition to Complete phase

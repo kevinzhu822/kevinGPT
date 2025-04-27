@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>KevinGPT Chat Redirect</title>
+  <script>
+    async function checkServerHealthAndRedirect() {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
+
+      try {
+        const res = await fetch('https://openwebui.kevin-zhu.com/health', { cache: 'no-store', signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (res.status === 200) {
+          console.log('Server healthy! Redirecting to live app...');
+          window.location.href = 'https://openwebui.kevin-zhu.com';
+        } else {
+          console.warn('Server unhealthy! Redirecting to admin page...');
+          window.location.href = 'https://admin.kevin-zhu.com';
+        }
+      } catch (err) {
+        clearTimeout(timeoutId);
+        console.error('Health check failed. Redirecting to admin page...');
+        window.location.href = 'https://admin.kevin-zhu.com';
+      }
+    }
+
+    // Run health check as soon as page loads
+    checkServerHealthAndRedirect();
+  </script>
+</head>
+<body class="bg-gray-100 flex flex-col justify-center items-center h-screen">
+  <div class="text-center">
+    <h1 class="text-2xl font-semibold mb-4">Connecting to KevinGPT...</h1>
+    <p class="text-gray-600">Hold on, we are checking server availability.</p>
+  </div>
+</body>
+</html>
