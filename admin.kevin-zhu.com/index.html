@@ -1,461 +1,198 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" href="favicon-dark.ico" type="image/x-icon"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="favicon-dark.ico" type="image/x-icon">
   <title>KevinGPT Admin Panel</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js" defer></script>
 </head>
 <body class="bg-gray-100 font-sans text-gray-800">
-  <div class="max-w-2xl mx-auto mt-10 p-6" x-data="{
-    showLogin: true,
-    init() {
-      console.log('Alpine init called');
-      const token = localStorage.getItem('id_token');
-      this.showLogin = !token;
-      console.log('Token present:', token ? 'Yes' : 'No');
-    }
-  }">
-    <h1 class="text-3xl font-bold text-center mb-8">KevinGPT Admin Panel</h1>
 
+<div class="max-w-4xl mx-auto mt-10 p-6" x-data="appData()" x-init="init()">
+  <h1 class="text-3xl font-bold text-center mb-8">KevinGPT Admin Panel</h1>
+
+  <!-- Panels -->
+  <template x-for="panel in panels" :key="panel.title">
     <div class="bg-white p-6 rounded-xl shadow-md mb-6">
       <div class="flex justify-between items-center mb-2">
-        <h2 class="text-xl font-semibold">App Status</h2>
-        <button onclick="getStatus()" class="text-blue-600 hover:underline text-sm">Refresh</button>
+        <h2 class="text-xl font-semibold" x-text="panel.title"></h2>
+        <button x-show="panel.action" @click="panel.action()" class="text-blue-600 hover:underline text-sm">Refresh</button>
       </div>
-      <div id="appStatus" class="font-medium">Loading...</div>
-      <div id="appLastChecked" class="text-xs text-gray-500 mt-1"></div>
+      <div :id="panel.id" class="font-medium">Loading...</div>
+      <div x-show="panel.subId" :id="panel.subId" class="text-xs text-gray-500 mt-1"></div>
+    </div>
+  </template>
+
+  <!-- Cost Breakdown -->
+  <div class="bg-white p-6 rounded-xl shadow-md mb-6">
+    <div class="flex justify-between items-center mb-2">
+      <h2 class="text-xl font-semibold">Cost Breakdown</h2>
+      <span class="text-sm font-medium" :class="isLoggedIn ? 'text-green-600' : 'text-red-600'" x-text="isLoggedIn ? 'Logged In ✓' : 'Login Required'"></span>
     </div>
 
-    <div class="bg-white p-6 rounded-xl shadow-md mb-6">
-      <div class="flex justify-between items-center mb-2">
-        <h2 class="text-xl font-semibold">EC2 State</h2>
-        <button onclick="getEC2State()" class="text-blue-600 hover:underline text-sm">Refresh</button>
+    <template x-if="isLoggedIn">
+      <div id="costBreakdown" class="space-y-6">
+        <template x-for="vendor in vendors" :key="vendor.name">
+          <div class="grid grid-cols-2 gap-4 items-start w-full">
+            <span class="font-medium" x-text="vendor.displayName"></span>
+            <div :id="vendor.domId" class="text-gray-600 w-full">Loading...</div>
+          </div>
+        </template>
       </div>
-      <div id="ec2State" class="font-medium">Loading...</div>
-      <div id="stateTimer" class="text-sm mt-2 text-gray-600"></div>
-      <div id="lastChecked" class="text-xs text-gray-500 mt-1"></div>
-      <div id="progressWrapper" class="w-full bg-gray-200 rounded-full h-3 mt-3 hidden border border-gray-300 relative">
-        <div id="progressBar" class="absolute top-0 left-0 bg-red-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
-      </div>
-    </div>
+    </template>
 
-    <div class="bg-white p-6 rounded-xl shadow-md mb-6">
-      <div class="flex justify-between items-center mb-2">
-        <h2 class="text-xl font-semibold">EC2 Controls</h2>
-        <span class="text-sm font-medium" :class="showLogin ? 'text-red-600' : 'text-green-600'" x-text="showLogin ? 'Login Required' : 'Logged In ✓'"></span>
-      </div>
-
-      <div id="authPanel" x-show="!showLogin" class="space-x-2 mb-3">
-        <button onclick="startEC2()" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Start</button>
-        <button onclick="stopEC2()" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Stop</button>
-        <button id="fetchLogsButton" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">Fetch Logs</button>
-      </div>
-
-      <template x-if="showLogin">
-        <button onclick="login()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Log In with Cognito</button>
-      </template>
-    </div>
+    <template x-if="!isLoggedIn">
+      <button @click="login()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Log In with Cognito</button>
+    </template>
   </div>
+</div>
 
-  <!-- Toast Notification -->
-  <div id="toast" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 hidden">
-    <div id="toastBox" class="relative bg-white w-96 p-6 rounded-lg shadow-2xl text-center transform scale-90 opacity-0 transition-all duration-500">
-      <button id="closeToast" class="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none">&times;</button>
-      <div id="toastIcon" class="text-4xl mb-2"></div>
-      <h2 id="toastMessage" class="text-lg font-medium text-gray-800"></h2>
-    </div>
-  </div>  
-  
+<!-- Toast Notification -->
+<div id="toast" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 hidden">
+  <div id="toastBox" class="relative bg-white w-96 p-6 rounded-lg shadow-2xl text-center transform scale-90 opacity-0 transition-all duration-500">
+    <button id="closeToast" class="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none">&times;</button>
+    <div id="toastIcon" class="text-4xl mb-2"></div>
+    <h2 id="toastMessage" class="text-lg font-medium text-gray-800"></h2>
+  </div>
+</div>
 
-  <script>
-    const COGNITO_DOMAIN = "login.kevin-zhu.com";
-    const CLIENT_ID = "1epb6123uv6n1mq9q5t8sias9u";
-    const REDIRECT_URI = window.location.hostname.includes("s3-website")
-      ? `http://${window.location.hostname}`
-      : "https://admin.kevin-zhu.com";
-
-    const API_BASE_URL = "https://miw5dbkttmuhs4wzs5hvbkoygq0jozll.lambda-url.us-east-2.on.aws";
-    const API_HEALTH_URL = "https://openwebui.kevin-zhu.com/health";
-    const API_EC2_STATE = `${API_BASE_URL}/ec2?op=status`;
-    const API_START_EC2 = `${API_BASE_URL}/ec2?op=start`;
-    const API_STOP_EC2 = `${API_BASE_URL}/ec2?op=stop`;
-    const API_LOGS = `${API_BASE_URL}?op=logs`;
-
-    // Handle login token from redirect
-    const urlToken = new URLSearchParams(window.location.hash.substr(1)).get("id_token");
-    console.log("URL token:", urlToken);
-    if (urlToken) {
-      localStorage.setItem("id_token", urlToken);
-      console.log("Token stored in localStorage");
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-    const idToken = localStorage.getItem("id_token");
-    console.log("Loaded token from localStorage");
-
-    function login() {
-      const url = `https://${COGNITO_DOMAIN}/login?client_id=${CLIENT_ID}&response_type=token&scope=email+openid&redirect_uri=${REDIRECT_URI}`;
-      console.log("Redirecting to Cognito login:", url);
-      window.location.href = url;
-    }
-
-    // Show toast notification
-    function showToast(message, type = 'success') {
-      const toast = document.getElementById("toast");
-      const toastBox = document.getElementById("toastBox");
-      const toastMessage = document.getElementById("toastMessage");
-      const toastIcon = document.getElementById("toastIcon");
-
-      toastMessage.innerHTML = message.replace(/\n/g, "<br>");
-
-      // Set icon and colors based on type
-      if (type === 'success') {
-        toastIcon.textContent = '✅';
-        toastBox.classList.remove('border-red-500', 'border-yellow-500');
-        toastBox.classList.add('border-green-500');
-      } else if (type === 'warning') {
-        toastIcon.textContent = '⚠️';
-        toastBox.classList.remove('border-red-500', 'border-green-500');
-        toastBox.classList.add('border-yellow-500');
-      } else if (type === 'error') {
-        toastIcon.textContent = '❌';
-        toastBox.classList.remove('border-green-500', 'border-yellow-500');
-        toastBox.classList.add('border-red-500');
+<script>
+function appData() {
+  return {
+    isLoggedIn: !!localStorage.getItem('id_token'),
+    vendors: [
+      { name: 'openai', displayName: 'OpenAI', api: 'openai-cost', domId: 'openaiCostBreakdown' },
+      { name: 'aws', displayName: 'AWS', api: 'aws-cost', domId: 'awsCostBreakdown' },
+      { name: 'brave', displayName: 'Brave (Internet Search)', api: 'brave-cost', domId: 'braveCostBreakdown' },
+    ],
+    panels: [
+      { title: 'App Status', id: 'appStatus', subId: 'appLastChecked', action: getStatus },
+      { title: 'EC2 State', id: 'ec2State', subId: 'lastChecked', action: getEC2State },
+    ],
+    async init() {
+      if (this.isLoggedIn) {
+        await this.fetchCosts();
       }
-
-      toast.classList.remove("hidden");
-
-      requestAnimationFrame(() => {
-        toastBox.classList.remove("opacity-0", "scale-90");
-        toastBox.classList.add("opacity-100", "scale-100");
-      });
-
-      clearTimeout(toastBox.autoHide);
-      toastBox.autoHide = setTimeout(hideToastSlow, 3000);
+    },
+    async fetchCosts() {
+      await Promise.all(this.vendors.map(async (vendor) => {
+        const data = await fetchVendorData(vendor.api);
+        if (!data) return;
+        renderVendorCost(data, vendor.domId, vendor.name);
+      }));
+    },
+    login() {
+      const domain = "login.kevin-zhu.com";
+      const clientId = "1epb6123uv6n1mq9q5t8sias9u";
+      const redirectUri = window.location.hostname.includes("s3-website")
+        ? `http://${window.location.hostname}`
+        : "https://admin.kevin-zhu.com";
+      window.location.href = `https://${domain}/login?client_id=${clientId}&response_type=token&scope=email+openid&redirect_uri=${redirectUri}`;
     }
+  }
+}
 
-    function hideToast() {
-      const toast = document.getElementById("toast");
-      const toastBox = document.getElementById("toastBox");
+function truncateToCents(num) {
+  return Math.floor(num * 100) / 100;
+}
 
-      toastBox.classList.remove("opacity-100", "scale-100");
-      toastBox.classList.add("opacity-0", "scale-90");
-      setTimeout(() => {
-        toast.classList.add("hidden");
-      }, 100);
-    }
+const API_BASE_URL = "https://miw5dbkttmuhs4wzs5hvbkoygq0jozll.lambda-url.us-east-2.on.aws";
+const idToken = localStorage.getItem('id_token');
 
-    function hideToastSlow() {
-      const toast = document.getElementById("toast");
-      const toastBox = document.getElementById("toastBox");
+function login() {
+  const domain = "login.kevin-zhu.com";
+  const clientId = "1epb6123uv6n1mq9q5t8sias9u";
+  const redirectUri = window.location.hostname.includes("s3-website")
+    ? `http://${window.location.hostname}`
+    : "https://admin.kevin-zhu.com";
+  window.location.href = `https://${domain}/login?client_id=${clientId}&response_type=token&scope=email+openid&redirect_uri=${redirectUri}`;
+}
 
-      toastBox.classList.remove("opacity-100", "scale-100");
-      toastBox.classList.add("opacity-0", "scale-90");
-      setTimeout(() => {
-        toast.classList.add("hidden");
-      }, 300);
-    }
+async function fetchVendorData(api) {
+  try {
+    const res = await fetch(`${API_BASE_URL}?op=${api}`, { headers: { Authorization: idToken } });
+    if (!res.ok) throw new Error('Fetch error');
+    return res.json();
+  } catch (err) {
+    console.error(`Failed fetching ${api}:`, err);
+    return null;
+  }
+}
 
-    document.addEventListener("DOMContentLoaded", function () {
-      document.getElementById("closeToast").addEventListener("click", hideToast);
-    });
+function renderVendorCost(data, domId, vendorName) {
+  const div = document.getElementById(domId);
+  div.innerHTML = '';
 
+  if (vendorName === 'aws' || vendorName === 'openai') {
+    const total = vendorName === 'aws'
+      ? data.services.reduce((sum, s) => sum + parseFloat(s.cost || 0), 0)
+      : data.totalOpenAICost;
 
-    async function getStatus() {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000); // ⏰ timeout after 2 seconds
+    const totalDiv = createTotalDiv(total);
+    div.appendChild(totalDiv);
 
-      try {
-        console.log("Checking KevinGPT status...");
-        const res = await fetch(API_HEALTH_URL, { 
-          cache: "no-store", 
-          signal: controller.signal 
-        });
+    const items = vendorName === 'aws'
+      ? data.services.map(s => ({ name: s.service, cost: parseFloat(s.cost) }))
+      : Object.entries(data.lineItems).map(([name, cost]) => ({ name, cost: parseFloat(cost) }));
 
-        clearTimeout(timeoutId); // 🔥 clear timeout if fetch succeeds
+    items.filter(i => i.cost >= 0.01)
+         .sort((a, b) => b.cost - a.cost)
+         .forEach(item => div.appendChild(createCostItem(item.name, item.cost)));
+  } else {
+    div.textContent = 'Vendor cost not implemented.';
+  }
+}
 
-        console.log("KevinGPT status response:", res);
+function createTotalDiv(total) {
+  const div = document.createElement('div');
+  div.className = "grid grid-cols-2 gap-4 font-semibold border-b-2 border-gray-300 pb-2 mb-2 text-base w-full";
+  div.innerHTML = `
+    <span class="break-words">Total</span>
+    <span class="text-right">$${truncateToCents(total).toFixed(2)}</span>
+  `;
+  return div;
+}
 
-        const appStatusElement = document.getElementById("appStatus");
-        const lastCheckedElement = document.getElementById("appLastChecked");
+function createCostItem(name, cost) {
+  const div = document.createElement('div');
+  div.className = "grid grid-cols-2 gap-4 text-sm border-b border-gray-200 py-2 w-full";
+  div.innerHTML = `
+    <span class="break-words">${name}</span>
+    <span class="text-right">$${truncateToCents(cost).toFixed(2)}</span>
+  `;
+  return div;
+}
 
-        if (res.status == 200) {
-          appStatusElement.innerHTML = "KevinGPT is <span class='text-green-600'>online!</span> Visit it here: <a href='https://chat.kevin-zhu.com' class='text-blue-600 underline' target='_blank'>KevinGPT</a>";
-        } else {
-          appStatusElement.innerHTML = "KevinGPT is <span class='text-red-600'>offline</span> 😔";
-        }
+async function getStatus() {
+  const url = "https://openwebui.kevin-zhu.com/health";
+  try {
+    const res = await fetch(url);
+    const appStatus = document.getElementById("appStatus");
+    const appLastChecked = document.getElementById("appLastChecked");
+    appStatus.innerHTML = res.ok ? 'KevinGPT is <span class="text-green-600">online!</span>' : 'KevinGPT is <span class="text-red-600">offline</span>';
+    appLastChecked.textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
+  } catch (err) {
+    console.error('Health check failed', err);
+  }
+}
 
-        lastCheckedElement.textContent = `Last checked at ${new Date().toLocaleTimeString()}`;
-      } catch (err) {
-        clearTimeout(timeoutId); // 🔥 clear timeout if fetch errors
-        console.error("Error while checking KevinGPT status:", err);
+async function getEC2State() {
+  try {
+    const res = await fetch(`${API_BASE_URL}?op=status`, { headers: { Authorization: idToken } });
+    const data = await res.json();
+    const state = data.state?.toLowerCase() || 'unknown';
+    const ec2State = document.getElementById("ec2State");
+    const lastChecked = document.getElementById("lastChecked");
+    ec2State.textContent = `EC2 is ${state}`;
+    lastChecked.textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
+  } catch (err) {
+    console.error('EC2 status check failed', err);
+  }
+}
 
-        const appStatusElement = document.getElementById("appStatus");
-        appStatusElement.innerHTML = "KevinGPT is <span class='text-red-600'>offline</span> 😔";
-        const lastCheckedElement2 = document.getElementById("appLastChecked");
-        lastCheckedElement2.textContent = `Last checked at ${new Date().toLocaleTimeString()}`;
-      }
-    }
+</script>
 
-    async function getEC2State() {
-      try {
-        console.log("Checking the EC2 state...");
-        const res = await fetch(API_EC2_STATE, {
-          headers: { Authorization: idToken },
-        });
-        const json = await res.json();
-        console.log("EC2 state response:", json);
-
-        const ec2StateElement = document.getElementById("ec2State");
-        const state = json.state ? json.state.toLowerCase() : "unknown";
-
-        // Clear previous status to avoid duplicate messages
-        ec2StateElement.innerHTML = "";
-
-        // Handle user-friendly statuses
-        switch (state) {
-          case "running":
-            ec2StateElement.innerHTML = "EC2 server is currently <span class='text-green-600'>running</span> 🏃‍➡️";
-            break;
-          case "stopped":
-            ec2StateElement.innerHTML = "EC2 server is currently <span class='text-red-600'>stopped</span> ✋";
-            break;
-          case "pending":
-            ec2StateElement.innerHTML = "EC2 server is currently <span class='text-yellow-500'>starting up</span>";
-            break;
-          case "stopping":
-            ec2StateElement.innerHTML = "EC2 server is currently <span class='text-yellow-500'>shutting down</span>";
-            break;
-          default:
-            ec2StateElement.innerHTML = "EC2 state is currently <span class='text-gray-600'>unknown</span>";
-            break;
-        }
-
-        const hourlyCost = 0.023; // Cost of t2.small per hour
-        const now = Date.now();
-
-        if (json.lastChanged) {
-          const lastTime = new Date(json.lastChanged).getTime();
-          const elapsedSeconds = Math.floor((now - lastTime) / 1000);
-          const elapsedHours = elapsedSeconds / 3600;
-
-          if (state === "running") {
-            // Calculate cost of this session
-            const sessionCost = (elapsedHours * hourlyCost).toFixed(4);
-            document.getElementById("stateTimer").textContent = `The EC2 has been running for ${formatDuration(elapsedSeconds)}. Estimated cost: $${sessionCost}`;
-          } else if (state === "stopped") {
-            // Calculate cost savings
-            const savings = (elapsedHours * hourlyCost).toFixed(4);
-            document.getElementById("stateTimer").textContent = `The EC2 has been stopped for ${formatDuration(elapsedSeconds)}. Estimated savings: $${savings}`;
-          }
-        }
-
-        document.getElementById("lastChecked").textContent = `Last checked at ${new Date().toLocaleTimeString()}`;
-      } catch (err) {
-        console.error("Error while checking the EC2 state:", err);
-        const ec2StateElement = document.getElementById("ec2State");
-        ec2StateElement.textContent = "Unable to retrieve the EC2 state. Please try again.";
-        ec2StateElement.className = "font-medium text-gray-500";
-      }
-    }
-
-    function formatDuration(seconds) {
-      const mins = Math.floor(seconds / 60);
-      const hrs = Math.floor(mins / 60);
-      const duration = hrs ? `${hrs}h ${mins % 60}m` : mins ? `${mins}m ${seconds % 60}s` : `${seconds}s`;
-      return duration;
-    }
-
-    async function startEC2() {
-      try {
-        console.log("Requesting to start the EC2...");
-        const res = await fetch(API_START_EC2, {
-          method: "POST",
-          headers: { Authorization: idToken }
-        });
-
-        if (res.status === 409) {
-          const errorData = await res.json();
-          showToast("The EC2 is already running", "warning");
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error(`Unable to start the EC2: ${res.statusText}`);
-        }
-
-        showToast("The EC2 is starting.\nThis may take a few moments", "success");
-        getEC2State();
-        simulateStartupTimer();
-      } catch (err) {
-        console.error("Error while starting the EC2:", err);
-        showToast("An error occurred while trying to start the EC2.\nPlease try again.", "error");
-      }
-    }
-
-    async function stopEC2() {
-      try {
-        console.log("Requesting to stop the EC2...");
-        const res = await fetch(API_STOP_EC2, {
-          method: "POST",
-          headers: { Authorization: idToken },
-        });
-
-        if (res.status === 409) {
-          const errorData = await res.json();
-          showToast("The EC2 is already stopped", "warning");
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error(`Unable to stop the EC2 : ${res.statusText}`);
-        }
-
-        showToast("The EC2 is stopping.\nThis may take a few moments.", "success");
-        simulateStoppingTimer(); // Start the stopping progress bar
-      } catch (err) {
-        console.error("Error while stopping the EC2:", err);
-        showToast("An error occurred while trying to stop the EC2.\nPlease try again.", "error");
-      }
-    }
-
-    async function fetchLogs() {
-      try {
-        console.log("Fetching logs...");
-        const res = await fetch(API_LOGS, {
-          headers: { Authorization: idToken },
-        });
-        console.log("Log Response Status:", res.status);
-        if (res.status === 409) {
-          console.log("showing toast")
-          showToast("The EC2 is off.\nPlease start it to fetch logs.", "error");
-          return;
-        }
-
-        if (!res.ok) {
-          console.log("response:", res.json());
-          console.log("Error fetching logs:", res.statusText);
-        }
-
-        const data = await res.json();
-        console.log("Logs fetched:", data);
-        showToast(data.output || "No logs available", "success");
-      } catch (err) {
-        console.error("Error while fetching logs:", err);
-        showToast(`Error: ${err.message}`, "error");
-      }
-    }
-
-    function simulateStartupTimer() {
-      const wrapper = document.getElementById("progressWrapper");
-      const bar = document.getElementById("progressBar");
-      const stateTimer = document.getElementById("stateTimer");
-      let phase = "ec2"; // Tracks the current phase: "ec2" or "kevingpt"
-      let seconds = 0;
-
-      // Show the progress bar with "Initializing" style
-      wrapper.classList.remove("hidden");
-      bar.style.width = "0%"; // Start at 0%
-      bar.style.background = "repeating-linear-gradient(45deg, #d1d5db, #d1d5db 10px, #9ca3af 10px, #9ca3af 20px)"; // Striped grey
-      stateTimer.textContent = "Initializing EC2...";
-
-      const interval = setInterval(async () => {
-        try {
-          if (phase === "ec2") {
-            // Poll the EC2 state
-            const res = await fetch(API_EC2_STATE, {
-              headers: { Authorization: idToken },
-            });
-            const json = await res.json();
-            console.log("EC2 state response:", json);
-
-            if (json.state && json.state.toLowerCase() === "running") {
-              // Transition to KevinGPT Startup phase
-              getEC2State();
-              phase = "kevingpt";
-              bar.style.width = "50%"; // Halfway for EC2 startup complete
-              bar.style.background = "#fbbf24"; // Yellow for KevinGPT startup
-              stateTimer.textContent = "Starting KevinGPT...";
-              seconds = 0; // Reset seconds for the next phase
-            }
-          } else if (phase === "kevingpt") {
-            // Poll the KevinGPT health endpoint
-            const res = await fetch(API_HEALTH_URL);
-            const data = await res.json();
-            console.log("KevinGPT health response:", data);
-            getStatus();
-
-            if (data.status && data.status.toLowerCase() === "healthy") {
-              // Transition to Complete phase
-              getStatus();
-              bar.style.width = "100%"; // Full width for complete
-              bar.style.background = "#16a34a"; // Green for success
-              stateTimer.textContent = "KevinGPT is online and ready!";
-              clearInterval(interval); // Stop polling
-            }
-          }
-        } catch (err) {
-          console.error("Error during startup simulation:", err);
-        }
-
-        // Simulate progress bar creeping
-        seconds++;
-        if (phase === "ec2") {
-          const percent = Math.min((seconds / 10) * 50, 50); // Max 50% for EC2 startup over 10 seconds
-          bar.style.width = percent + "%";
-        } else if (phase === "kevingpt") {
-          const percent = 50 + Math.min((seconds / 120) * 50, 50); // 50% to 100% for KevinGPT startup over 120 seconds
-          bar.style.width = percent + "%";
-        }
-      }, 1000);
-    }
-
-    function simulateStoppingTimer() {
-      const wrapper = document.getElementById("progressWrapper");
-      const bar = document.getElementById("progressBar");
-      const stateTimer = document.getElementById("stateTimer");
-      let seconds = 0;
-
-      // Show the progress bar with "Stopping" style
-      wrapper.classList.remove("hidden");
-      bar.style.width = "0%"; // Start at 0%
-      bar.style.background = "repeating-linear-gradient(45deg, #f87171, #f87171 10px, #ef4444 10px, #ef4444 20px)"; // Striped red
-      stateTimer.textContent = "Stopping EC2...";
-
-      const interval = setInterval(async () => {
-        try {
-          // Poll the EC2 state
-          const res = await fetch(API_EC2_STATE, {
-            headers: { Authorization: idToken },
-          });
-          const json = await res.json();
-          console.log("EC2 state response:", json);
-
-          if (json.state && json.state.toLowerCase() === "stopped") {
-            // Transition to "Stopped" phase
-            getEC2State();
-            bar.style.width = "100%"; // Full width for complete
-            bar.style.background = "#16a34a"; // Green for success
-            stateTimer.textContent = "EC2 stopped. Thanks for helping us save money!";
-            clearInterval(interval); // Stop polling
-          }
-        } catch (err) {
-          console.error("Error during stopping simulation:", err);
-        }
-
-        // Simulate progress bar creeping
-        seconds++;
-        const percent = Math.min((seconds / 60) * 100, 100); // Max 100% for stopping over 60 seconds
-        bar.style.width = percent + "%";
-      }, 1000);
-    }
-
-    document.getElementById("fetchLogsButton").addEventListener("click", fetchLogs);
-
-    getStatus();
-    getEC2State();
-  </script>
 </body>
 </html>
