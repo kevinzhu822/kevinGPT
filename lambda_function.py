@@ -22,10 +22,6 @@ cors_headers = {
     "Access-Control-Allow-Credentials": "true",
 }
 INSTANCE_ID = 'i-0a7cadc0f412cdcc6'
-COGNITO_POOL_ID = 'us-east-1_DuKATl6y7'  # your actual pool id
-COGNITO_REGION = 'us-east-1'
-COGNITO_ISSUER = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_POOL_ID}"
-JWKS_URL = f"{COGNITO_ISSUER}/.well-known/jwks.json"
 
 protected_ops = ['start', 'stop', 'logs', 'aws-cost', 'openai-cost']
 
@@ -47,20 +43,12 @@ def lambda_handler(event, context):
         }
 
     op = event.get('queryStringParameters', {}).get('op', 'status')
-    if op in protected_ops:
-        auth_header = event['headers'].get('authorization') or event['headers'].get('Authorization')
-        if not auth_header:
-            return respond(401, {'error': 'Missing Authorization header'})
-
-        try:
-            is_valid, user_info = verify_token_with_cognito(auth_header)
-            if not is_valid:
-                return respond(401, {'error': 'Invalid or expired token'})
-        except Exception as e:
-            print('Auth verification failed:', str(e))
-            return respond(401, {'error': 'Invalid or expired token'})
 
     try:
+        if op in protected_ops:
+            token = event['headers'].get('authorization', '').split(' ')[1]
+            if not token:
+                return respond(401, {'message': 'Unauthorized'})
         if op == 'health':
             health_check_url = 'https://chat.kevin-zhu.com/health'
             try:
@@ -273,22 +261,3 @@ def get_instance_state(instance_id):
     response = ec2.describe_instances(InstanceIds=[instance_id])
     state = response['Reservations'][0]['Instances'][0]['State']['Name']
     return state
-
-def verify_token_with_cognito(id_token):
-    COGNITO_DOMAIN = "https://login.kevin-zhu.com"  # your domain (no /oauth2)
-
-    req = urllib.request.Request(
-        f"{COGNITO_DOMAIN}/oauth2/userInfo",
-        headers={"Authorization": f"Bearer {id_token}"}
-    )
-
-    try:
-        with urllib.request.urlopen(req) as resp:
-            if resp.status == 200:
-                user_info = json.loads(resp.read().decode())
-                return True, user_info  # token is valid
-            else:
-                return False, None  # token is invalid
-    except Exception as e:
-        print(f"Token verification failed: {e}")
-        return False, None

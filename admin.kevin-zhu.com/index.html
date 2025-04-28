@@ -57,30 +57,28 @@
 
   <!-- Cost Summary -->
   <div class="bg-white p-6 rounded-xl shadow-md mb-6" x-data="{ open: false }">
-    <div class="flex justify-between items-center mb-2 cursor-pointer" @click="open = !open">
-      <h2 id="costBreakdownHeader" class="text-xl font-semibold flex items-center">
-        Cost Summary
-        <span id="costBreakdownDates" class="text-gray-500 text-base font-normal ml-3"></span>
-      </h2>
-      <span x-text="open ? '−' : '+' " class="text-xl font-bold"></span>
-    </div>
-    <div x-show="open" x-transition id="costBreakdown" class="space-y-6 pt-4">
-      <template x-if="isLoggedIn">
-        <div class="space-y-8">
-          <!-- Total Cost Row (🔥 NEW) -->
-          <div id="totalCostRow" class="flex justify-between items-center p-4 bg-gray-50 rounded-lg shadow-sm border text-lg font-semibold">
-            <span>Total Cost Month-to-Date:</span>
-            <span id="totalCostAmount" class="text-gray-800">Calculating...</span>
-          </div>
-          <!-- Vendor Cost Rows -->
-          <template x-for="vendor in vendors" :key="vendor.name">
-            <div class="flex flex-col space-y-2 mb-6" :id="vendor.wrapperId">
-              <!-- Vendor Title -->
-              <div class="font-bold text-lg" x-text="vendor.displayName"></div>
-          
-              <!-- Vendor Costs -->
-              <div class="flex flex-col space-y-2 w-full" :id="vendor.domId">
-                <div class="flex items-center space-x-2 text-gray-600 animate-pulse">
+    <template x-if="isLoggedIn">
+      <div>
+        <div class="flex justify-between items-center mb-2 cursor-pointer" @click="open = !open">
+          <h2 id="costBreakdownHeader" class="text-xl font-semibold flex items-center">
+            Cost Summary
+            <span id="costBreakdownDates" class="text-gray-500 text-base font-normal ml-3"></span>
+          </h2>
+          <span x-text="open ? '−' : '+' " class="text-xl font-bold"></span>
+        </div>
+        
+        <div x-show="open" x-transition id="costBreakdown" class="space-y-6 pt-4">
+          <div class="space-y-8">
+            <!-- Total Cost Row -->
+            <div id="totalCostRow" class="flex justify-between items-center p-4 bg-gray-50 rounded-lg shadow-sm border text-lg font-semibold">
+              <span>Total Cost Month-to-Date:</span>
+              <span id="totalCostAmount" class="text-gray-800">Calculating...</span>
+            </div>
+            <!-- Vendor Cost Rows -->
+            <template x-for="vendor in vendors" :key="vendor.name">
+              <div class="grid grid-cols-2 gap-4 items-start w-full mb-6" :id="vendor.wrapperId">
+                <span class="text-gray-700" x-text="vendor.displayName"></span>
+                <div class="flex items-center space-x-2 text-gray-600 w-full animate-pulse" :id="vendor.domId">
                   <svg class="h-4 w-4 text-gray-500 animate-spin-slow" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
@@ -88,18 +86,26 @@
                   <span>Loading...</span>
                 </div>
               </div>
-            </div>
-          </template>
+            </template>
+          </div>
         </div>
-      </template>
-      <template x-if="!isLoggedIn">
-        <div class="flex flex-col items-center justify-center py-8">
-          <button @click="login()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            Log In with Cognito
-          </button>
-        </div>
-      </template>
-    </div>
+      </div>
+    </template>
+  
+    <!-- When NOT logged in -->
+    <template x-if="!isLoggedIn">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-semibold">Cost Summary</h2>
+        <span class="text-sm font-medium text-red-600">Login Required</span>
+      </div>
+    
+      <div class="flex justify-center">
+        <button @click="login()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+          Log In with Cognito
+        </button>
+      </div>
+    </template>
+  </div>
 </div>
 
 <!-- Toast Notification -->
@@ -586,15 +592,14 @@ function hideToastSlow() {
 function isLoggedIn() {
   const token = localStorage.getItem('id_token');
   if (!token || token.split('.').length !== 3) {
-    // Token is missing or not a proper JWT (three parts separated by dots)
     return false;
   }
 
   try {
     const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); // Base64url -> Base64
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); // base64url -> base64
     const payload = JSON.parse(atob(base64));
-    const now = Math.floor(Date.now() / 1000); // current time in seconds
+    const now = Math.floor(Date.now() / 1000);
 
     if (payload.exp && payload.exp <= now) {
       console.warn('Token expired');
@@ -604,6 +609,7 @@ function isLoggedIn() {
     return true;
   } catch (err) {
     console.error('Error decoding token:', err);
+    localStorage.removeItem('id_token'); // <-- 🧹 clean up bad token here too!
     return false;
   }
 }
