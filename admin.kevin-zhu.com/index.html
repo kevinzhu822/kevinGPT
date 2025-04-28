@@ -42,7 +42,7 @@
   
         <!-- Progress bar will appear here -->
         <div id="ec2ProgressWrapper" class="hidden">
-          <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+          <div class="w-full bg-gray-200 rounded-full h-3 overflow-auto">
             <div id="ec2ProgressBar" class="h-full bg-green-500 transition-all duration-300 ease-in-out" style="width: 0%;"></div>
           </div>
           <div id="ec2ProgressMessage" class="text-sm text-gray-600 mt-1 text-center"></div>
@@ -56,18 +56,18 @@
   </div>
 
   <!-- Cost Summary -->
-  <div class="bg-white p-6 rounded-xl shadow-md mb-6" x-data="{ open: false }">
+  <div class="bg-white p-6 rounded-xl shadow-md mb-6">
     <template x-if="isLoggedIn">
       <div>
-        <div class="flex justify-between items-center mb-2 cursor-pointer" @click="open = !open">
+        <div class="flex justify-between items-center mb-2 cursor-pointer" @click="openCostSummary = !openCostSummary">
           <h2 id="costBreakdownHeader" class="text-xl font-semibold flex items-center">
             Cost Summary
             <span id="costBreakdownDates" class="text-gray-500 text-base font-normal ml-3"></span>
           </h2>
-          <span x-text="open ? '−' : '+' " class="text-xl font-bold"></span>
+          <span x-text="openCostSummary ? '−' : '+' " class="text-xl font-bold"></span>
         </div>
         
-        <div x-show="open" x-transition id="costBreakdown" class="space-y-6 pt-4">
+        <div x-show="openCostSummary" x-transition id="costBreakdown" class="space-y-6 pt-4">
           <div class="space-y-8">
             <!-- Total Cost Row -->
             <div id="totalCostRow" class="flex justify-between items-center p-4 bg-gray-50 rounded-lg shadow-sm border text-lg font-semibold">
@@ -99,15 +99,15 @@
   
     <!-- When NOT logged in -->
     <template x-if="!isLoggedIn">
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-semibold">Cost Summary</h2>
-        <span class="text-sm font-medium text-red-600">Login Required</span>
-      </div>
+      <div>
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-semibold">Cost Summary</h2>
+          <span class="text-sm font-medium text-red-600">Login Required</span>
+        </div>
     
-      <div class="flex justify-center">
-        <button @click="login()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-          Log In with Cognito
-        </button>
+        <div class="flex">
+          <button @click="login()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Log In</button>
+        </div>
       </div>
     </template>
   </div>
@@ -124,10 +124,11 @@
 
 <!-- Log Viewer Modal -->
 <div id="logViewer" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 hidden z-50">
-  <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-3xl p-6 overflow-y-auto max-h-[80vh] relative">
+  <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-3xl p-6 relative max-h-[80vh]">
     <button id="closeLogViewer" class="absolute top-3 right-4 text-2xl text-gray-400 hover:text-gray-700">&times;</button>
     <h2 class="text-xl font-bold mb-4">EC2 Logs</h2>
-    <pre id="logContent" class="bg-gray-100 p-4 rounded-lg text-sm text-gray-800 whitespace-pre-wrap font-mono"></pre>
+    <pre id="logContent" class="bg-gray-100 p-4 rounded-lg text-sm text-gray-800 whitespace-pre-wrap overflow-auto font-mono w-full">
+    </pre>
   </div>
 </div>
 
@@ -156,6 +157,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
 function appData() {
   return {
     isLoggedIn: isLoggedIn(),
+    openCostSummary: false,
     vendors: [
       { name: 'openai', displayName: 'OpenAI', api: 'openai-cost', domId: 'openaiCostBreakdown' },
       { name: 'aws', displayName: 'AWS', api: 'aws-cost', domId: 'awsCostBreakdown' },
@@ -446,28 +448,100 @@ async function fetchLogs() {
     const res = await fetch(`${API_BASE_URL}?op=logs`, { method: "GET", headers: { Authorization: idToken } });
     const data = await res.json();
 
+    console.log('Fetched logs:', data.output); // Debugging
+
     if (!res.ok || !data.output) {
       showToast('Failed to fetch logs.', 'error');
       return;
     }
 
-    // Show logs nicely inside the modal
-    const logViewer = document.getElementById("logViewer");
-    const logContent = document.getElementById("logContent");
-    logContent.textContent = data.output || 'No logs available.';
-    logViewer.classList.remove("hidden");
+    const logWindow = window.open('', '_blank');
+    if (logWindow) {
+      logWindow.document.open();
+      logWindow.document.write(`
+        <html lang="en">
+          <head>
+            <title>EC2 Logs (Live)</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body {
+                font-family: 'Fira Code', 'Courier New', monospace;
+                background-color: #f3f4f6;
+                color: #1f2937;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+              }
+              header {
+                background-color: #1f2937;
+                color: white;
+                padding: 1rem;
+                font-size: 1.5rem;
+                text-align: center;
+              }
+              main {
+                flex: 1;
+                overflow-y: auto;
+                padding: 1rem;
+              }
+              pre {
+                background: #ffffff;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                white-space: pre-wrap;
+                word-break: break-word;
+                min-height: 90%;
+              }
+            </style>
+          </head>
+          <body>
+            <header>EC2 Logs (Live)</header>
+            <main>
+              <pre id="liveLogContent">${escapeHtml(data.output)}</pre>
+            </main>
+
+            <script>
+              const apiUrl = '${API_BASE_URL}';
+              const token = '${idToken}';
+
+              async function refreshLogs() {
+                try {
+                  const res = await fetch(apiUrl + '?op=logs', { headers: { Authorization: token } });
+                  const data = await res.json();
+                  if (res.ok && data.output) {
+                    document.getElementById('liveLogContent').textContent = data.output;
+                  }
+                } catch (err) {
+                  console.error('Failed to refresh logs', err);
+                }
+              }
+
+              setInterval(refreshLogs, 5000);
+            <\/script> <!-- Important: escape the /script -->
+          </body>
+        </html>
+      `);
+      logWindow.document.close();
+      logWindow.focus();
+    } else {
+      showToast('Popup blocked! Please allow popups for this site.', 'error');
+    }
 
   } catch (err) {
     console.error("Error fetching logs:", err);
     showToast('Network error fetching logs.', 'error');
   } finally {
-    // Restore the button no matter what
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = `Fetch Logs`;
     }
   }
 }
+
+
 
 async function ec2Action(action, toastMessage, method = 'POST') {
   try {
@@ -569,6 +643,17 @@ function updateTotalCost(total) {
   if (totalCostElement) {
     totalCostElement.textContent = `$${truncateToCents(total).toFixed(2)}`;
   }
+}
+
+function escapeHtml(text) {
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
 
 // Toast logic
