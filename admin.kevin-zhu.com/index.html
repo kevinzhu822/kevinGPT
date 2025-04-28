@@ -31,13 +31,25 @@
       <h2 class="text-xl font-semibold">EC2 Controls</h2>
       <span class="text-sm font-medium" :class="isLoggedIn ? 'text-green-600' : 'text-red-600'" x-text="isLoggedIn ? 'Logged In ✓' : 'Login Required'"></span>
     </div>
+  
     <template x-if="isLoggedIn">
-      <div class="space-x-2 mb-3">
-        <button @click="startEC2()" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Start</button>
-        <button @click="stopEC2()" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Stop</button>
-        <button @click="fetchLogs()" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">Fetch Logs</button>
+      <div class="space-y-4 mb-3">
+        <div class="space-x-2">
+          <button @click="startEC2()" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Start</button>
+          <button @click="stopEC2()" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Stop</button>
+          <button id="fetchLogsButton" @click="fetchLogs()" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">Fetch Logs</button>
+        </div>
+  
+        <!-- Progress bar will appear here -->
+        <div id="ec2ProgressWrapper" class="hidden">
+          <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div id="ec2ProgressBar" class="h-full bg-green-500 transition-all duration-300 ease-in-out" style="width: 0%;"></div>
+          </div>
+          <div id="ec2ProgressMessage" class="text-sm text-gray-600 mt-1 text-center"></div>
+        </div>
       </div>
     </template>
+  
     <template x-if="!isLoggedIn">
       <button @click="login()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Log In with Cognito</button>
     </template>
@@ -102,7 +114,7 @@ function appData() {
     ],
     panels: [
       { title: 'App Status', id: 'appStatus', subId: 'appLastChecked', actionName: 'refreshAppStatus' },
-      { title: 'EC2 State', id: 'ec2State', subId: 'lastChecked', actionName: 'refreshEC2State' },
+      { title: 'EC2 Status', id: 'ec2State', subId: 'lastChecked', actionName: 'refreshEC2State' },
     ],
     async init() {
       this.refreshAppStatus();
@@ -112,6 +124,11 @@ function appData() {
           await this.fetchCosts();
         });
       }
+      // ⏳ Auto-refresh every 20 seconds
+      setInterval(() => {
+        this.refreshAppStatus();
+        this.refreshEC2State();
+      }, 10000); // 10 seconds
     },
     async fetchCosts() {
       await Promise.all(this.vendors.map(async (vendor) => {
@@ -243,9 +260,17 @@ async function getStatus() {
     const appLastChecked = document.getElementById("appLastChecked");
 
     if (appStatus && appLastChecked) {
-      appStatus.innerHTML = res.ok
-        ? 'KevinGPT is <span class="text-green-600">online ✅</span>'
-        : 'KevinGPT is <span class="text-red-600">offline ❌</span>';
+      if (res.ok) {
+        appStatus.innerHTML = `
+          KevinGPT is <span class="text-green-600">online ✅</span>
+          <a href="https://openwebui.kevin-zhu.com" target="_blank"
+             class="inline-block ml-4 px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 text-sm">
+             🚀 Open KevinGPT
+          </a>
+        `;
+      } else {
+        appStatus.innerHTML = 'KevinGPT is <span class="text-red-600">offline ❌</span>';
+      }
       appLastChecked.textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
     }
   } catch (err) {
@@ -267,27 +292,80 @@ async function getEC2State() {
     const ec2State = document.getElementById("ec2State");
     const lastChecked = document.getElementById("lastChecked");
 
+    let message = '';
+    let colorClass = '';
+    let emoji = '';
+
     if (state === "running") {
-      ec2State.innerHTML = 'EC2 is <span class="text-green-600">running 🏃‍➡️</span>';
+      message = "running";
+      colorClass = "text-green-600";
+      emoji = "🏃‍➡️";
     } else if (state === "stopped") {
-      ec2State.innerHTML = 'EC2 is <span class="text-red-600">stopped ✋</span>';
+      message = "stopped";
+      colorClass = "text-red-600";
+      emoji = "✋";
+    } else if (state === "stopping") {
+      message = "stopping";
+      colorClass = "text-yellow-500";
+      emoji = "🛑";
+    } else if (state === "pending") {
+      message = "starting";
+      colorClass = "text-yellow-500";
+      emoji = "🟡";
+    } else if (state === "shutting-down") {
+      message = "shutting down";
+      colorClass = "text-orange-500";
+      emoji = "🛑";
+    } else if (state === "terminated") {
+      message = "terminated";
+      colorClass = "text-gray-500";
+      emoji = "☠️";
     } else {
-      ec2State.innerHTML = `EC2 is ${state}`;
+      message = state;
+      colorClass = "text-gray-400";
+      emoji = "❓";
     }
 
+    ec2State.innerHTML = `EC2 is <span class="${colorClass}">${message} ${emoji}</span>`;
     lastChecked.textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
+
   } catch (err) {
     console.error('EC2 status check failed', err);
+    showToast('Failed to fetch EC2 state!', 'error');
   }
 }
 
+
 async function startEC2() {
-  await ec2Action('start', 'Starting EC2...');
+  const state = await getEC2StateLive();
+  if (state === 'running' || state === 'pending') {
+    showToast('EC2 is already starting or running 🏃‍➡️', 'warning');
+    return;
+  }
+  showProgress("Starting EC2 instance...", 'bg-green-500');
+  await ec2Action('start', 'EC2 starting... ✅');
 }
+
 async function stopEC2() {
-  await ec2Action('stop', 'Stopping EC2...');
+  const state = await getEC2StateLive();
+  if (state === 'stopped' || state === 'stopping' || state === 'shutting-down' || state === 'terminated') {
+    showToast('EC2 is already stopping or stopped ✋', 'warning');
+    return;
+  }
+  showProgress("Stopping EC2 instance...", 'bg-red-500');
+  await ec2Action('stop', 'EC2 stopping... ✅');
 }
+
 async function fetchLogs() {
+  const btn = document.getElementById('fetchLogsButton');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="animate-spin h-4 w-4 inline-block mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg> Loading...`;
+  }
+
   try {
     const res = await fetch(`${API_BASE_URL}?op=logs`, { method: "GET", headers: { Authorization: idToken } });
     const data = await res.json();
@@ -302,20 +380,29 @@ async function fetchLogs() {
     const logContent = document.getElementById("logContent");
     logContent.textContent = data.output || 'No logs available.';
     logViewer.classList.remove("hidden");
-    
+
   } catch (err) {
     console.error("Error fetching logs:", err);
     showToast('Network error fetching logs.', 'error');
+  } finally {
+    // Restore the button no matter what
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `Fetch Logs`;
+    }
   }
 }
 
 async function ec2Action(action, toastMessage, method = 'POST') {
   try {
+    showProgress(`Working on ${action}...`); // ⬅️ Start progress immediately
+
     const res = await fetch(`${API_BASE_URL}?op=${action}`, { method, headers: { Authorization: idToken } });
     const rawText = await res.text();
-    
+
     if (!res.ok) {
       console.error(`Server Error Response:`, rawText);
+      hideProgress(); // ⬅️ Stop progress if error
 
       let friendlyMessage = 'Action failed!';
       if (rawText.includes('already running')) {
@@ -334,20 +421,70 @@ async function ec2Action(action, toastMessage, method = 'POST') {
       return;
     }
 
-    // ✅ Now success handling
-    if (action === 'start') {
-      showToast('Successfully started EC2! 🏃‍➡️', 'success');
-    } else if (action === 'stop') {
-      showToast('Successfully stopped EC2! ✋', 'success');
-    } else if (action === 'logs') {
-      showToast('Logs fetched successfully 📜', 'success');
-    } else {
-      showToast(`${toastMessage} ✅`, 'success');
-    }
+    // ✅ Success flow
+    completeProgress(); // ⬅️ Progress zooms to 100%
+    
+    // 💥 Wait 1 second before refreshing EC2 state
+    setTimeout(() => {
+      getEC2State();
+    }, 1000);
 
   } catch (err) {
     console.error(`Error performing EC2 ${action}:`, err);
+    hideProgress(); // ⬅️ Stop progress if totally failed
     showToast('Network error. Please try again.', 'error');
+  }
+}
+
+
+let ec2ProgressTimer;
+
+function showProgress(message, color = 'bg-green-500') {
+  const wrapper = document.getElementById("ec2ProgressWrapper");
+  const bar = document.getElementById("ec2ProgressBar");
+  const text = document.getElementById("ec2ProgressMessage");
+
+  wrapper.classList.remove("hidden");
+  bar.className = `h-full ${color} transition-all duration-300 ease-in-out`;
+  bar.style.width = "0%";
+  text.textContent = message;
+
+  let percent = 0;
+  clearInterval(ec2ProgressTimer);
+  ec2ProgressTimer = setInterval(() => {
+    if (percent >= 90) return; // Don't fully complete yet
+    percent += 2;
+    bar.style.width = `${percent}%`;
+  }, 300);
+}
+
+function completeProgress(finalMessage = 'Done! ✅') {
+  const bar = document.getElementById("ec2ProgressBar");
+  const text = document.getElementById("ec2ProgressMessage");
+
+  clearInterval(ec2ProgressTimer);
+  bar.style.width = "100%";
+  text.textContent = finalMessage;
+
+  setTimeout(() => {
+    hideProgress();
+  }, 1000); // Hide after 1s
+}
+
+function hideProgress() {
+  const wrapper = document.getElementById("ec2ProgressWrapper");
+  wrapper.classList.add("hidden");
+}
+
+async function getEC2StateLive() {
+  try {
+    const res = await fetch(`${API_BASE_URL}?op=status`, { headers: { Authorization: idToken } });
+    const data = await res.json();
+    return data.state?.toLowerCase() || 'unknown';
+  } catch (err) {
+    console.error('Live EC2 state check failed', err);
+    showToast('Unable to check EC2 state!', 'error');
+    return 'unknown';
   }
 }
 
