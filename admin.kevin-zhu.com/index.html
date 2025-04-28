@@ -76,14 +76,19 @@
             </div>
             <!-- Vendor Cost Rows -->
             <template x-for="vendor in vendors" :key="vendor.name">
-              <div class="grid grid-cols-2 gap-4 items-start w-full mb-6" :id="vendor.wrapperId">
-                <span class="text-gray-700" x-text="vendor.displayName"></span>
-                <div class="flex items-center space-x-2 text-gray-600 w-full animate-pulse" :id="vendor.domId">
-                  <svg class="h-4 w-4 text-gray-500 animate-spin-slow" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                  </svg>
-                  <span>Loading...</span>
+              <div class="flex flex-col space-y-2 mb-6" :id="vendor.wrapperId">
+                <!-- Vendor Title -->
+                <div class="font-bold text-lg text-gray-700" x-text="vendor.displayName"></div>
+              
+                <!-- Vendor Costs -->
+                <div class="flex flex-col space-y-2 w-full" :id="vendor.domId">
+                  <div class="flex items-center space-x-2 text-gray-600 animate-pulse">
+                    <svg class="h-4 w-4 text-gray-500 animate-spin-slow" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                    <span>Loading...</span>
+                  </div>
                 </div>
               </div>
             </template>
@@ -401,8 +406,12 @@ async function getEC2State() {
 
 async function startEC2() {
   const state = await getEC2StateLive();
-  if (state === 'running' || state === 'pending') {
-    showToast('EC2 is already starting or running 🏃‍➡️', 'warning');
+  if (state === 'running') {
+    showToast('EC2 is already running 🏃‍➡️', 'warning');
+    return;
+  }
+  else if (state === 'pending') {
+    showToast('EC2 is already starting up 🏃‍➡️', 'warning');
     return;
   }
   showProgress("Starting EC2 instance...", 'bg-green-500');
@@ -411,8 +420,12 @@ async function startEC2() {
 
 async function stopEC2() {
   const state = await getEC2StateLive();
-  if (state === 'stopped' || state === 'stopping' || state === 'shutting-down' || state === 'terminated') {
-    showToast('EC2 is already stopping or stopped ✋', 'warning');
+  if (state === 'stopped' || state === 'terminated') {
+    showToast('EC2 is already stopped ✋', 'warning');
+    return;
+  }
+  else if (state === 'stopping' || state === 'shutting-down') {
+    showToast('EC2 is already stopping ✋', 'warning');
     return;
   }
   showProgress("Stopping EC2 instance...", 'bg-red-500');
@@ -434,7 +447,7 @@ async function fetchLogs() {
     const data = await res.json();
 
     if (!res.ok || !data.output) {
-      showToast('Failed to fetch logs. EC2 might be off.', 'error');
+      showToast('Failed to fetch logs.', 'error');
       return;
     }
 
@@ -458,7 +471,7 @@ async function fetchLogs() {
 
 async function ec2Action(action, toastMessage, method = 'POST') {
   try {
-    showProgress(`Working on ${action}...`); // ⬅️ Start progress immediately
+    showProgress(`Initializing ${action} process...`); // ⬅️ Start progress immediately
 
     const res = await fetch(`${API_BASE_URL}?op=${action}`, { method, headers: { Authorization: idToken } });
     const rawText = await res.text();
