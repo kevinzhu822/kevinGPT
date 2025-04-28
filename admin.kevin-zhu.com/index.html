@@ -55,28 +55,40 @@
     </template>
   </div>
 
-  <!-- Cost Breakdown -->
-  <div class="bg-white p-6 rounded-xl shadow-md mb-6">
-    <div class="flex justify-between items-center mb-2">
-      <h2 id="costBreakdownHeader" class="text-xl font-semibold">Cost Breakdown</h2>
+  <!-- Cost Summary -->
+  <div class="bg-white p-6 rounded-xl shadow-md mb-6" x-data="{ open: false }">
+    <div class="flex justify-between items-center mb-2 cursor-pointer" @click="open = !open">
+      <h2 id="costBreakdownHeader" class="text-xl font-semibold flex items-center">
+        Cost Summary
+        <span id="costBreakdownDates" class="text-gray-500 text-base font-normal ml-3"></span>
+      </h2>
+      <span x-text="open ? '−' : '+' " class="text-xl font-bold"></span>
     </div>
-    <template x-if="isLoggedIn">
-      <div id="costBreakdown" class="space-y-6">
-        <template x-for="vendor in vendors" :key="vendor.name">
-          <div class="grid grid-cols-2 gap-4 items-start w-full" :id="vendor.wrapperId">
-            <span class="font-medium" x-text="vendor.displayName"></span>
-            <div class="flex items-center space-x-2 text-gray-600 w-full animate-pulse" :id="vendor.domId">
-              <svg class="h-4 w-4 text-gray-500 animate-spin-slow" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-              </svg>
-              <span>Loading...</span>
-            </div>
+
+    <div x-show="open" x-transition id="costBreakdown" class="space-y-6 pt-4">
+      <template x-if="isLoggedIn">
+        <div class="space-y-8">
+          <!-- Total Cost Row (🔥 NEW) -->
+          <div id="totalCostRow" class="flex justify-between items-center p-4 bg-gray-50 rounded-lg shadow-sm border text-lg font-semibold">
+            <span>Total Cost Month-to-Date:</span>
+            <span id="totalCostAmount" class="text-gray-800">$0.00</span>
           </div>
-        </template>    
-      </div>
-    </template>
-  </div>
+          <!-- Vendor Cost Rows -->
+          <template x-for="vendor in vendors" :key="vendor.name">
+            <div class="grid grid-cols-2 gap-4 items-start w-full mb-6" :id="vendor.wrapperId">
+              <span class="font-medium" x-text="vendor.displayName"></span>
+              <div class="flex items-center space-x-2 text-gray-600 w-full animate-pulse" :id="vendor.domId">
+                <svg class="h-4 w-4 text-gray-500 animate-spin-slow" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+                <span>Loading...</span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
 </div>
 
 <!-- Toast Notification -->
@@ -131,15 +143,27 @@ function appData() {
       }, 10000); // 10 seconds
     },
     async fetchCosts() {
+      let totalCost = 0;
+
       await Promise.all(this.vendors.map(async (vendor) => {
         const data = await fetchVendorData(vendor.api);
         if (!data) return;
+
         if (vendor.name === 'aws') {
           const rangeText = formatAwsDateRange(data);
-          document.getElementById('costBreakdownHeader').textContent = `Cost Breakdown ${rangeText}`;
+          document.getElementById('costBreakdownDates').textContent = `${rangeText}`;
         }
+
+        const vendorTotal = vendor.name === 'aws'
+          ? data.services.reduce((sum, s) => sum + parseFloat(s.cost || 0), 0)
+          : data.totalOpenAICost || 0;
+
+        totalCost += vendorTotal;
         renderVendorCost(data, vendor.domId, vendor.name);
       }));
+
+      // After all vendors are loaded
+      document.getElementById('totalCostAmount').textContent = `$${totalCost.toFixed(2)}`;
     },
     refreshAppStatus() {
       getStatus();
@@ -485,6 +509,13 @@ async function getEC2StateLive() {
     console.error('Live EC2 state check failed', err);
     showToast('Unable to check EC2 state!', 'error');
     return 'unknown';
+  }
+}
+
+function updateTotalCost(total) {
+  const totalCostElement = document.getElementById("totalCostAmount");
+  if (totalCostElement) {
+    totalCostElement.textContent = `$${truncateToCents(total).toFixed(2)}`;
   }
 }
 
